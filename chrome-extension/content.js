@@ -1,20 +1,28 @@
 // ページからテキストとメタデータを抽出
 function extractPageContent() {
-  // メインコンテンツを探す
+  // noteなど特定サイトのセレクタを追加
   const mainSelectors = [
+    // note.com用
+    '.note-common-styles__textnote-body',
+    '.o-noteContentText',
+    'article .note-common-styles__textnote-body',
+    // 汎用セレクタ
     'article',
     'main',
     '[role="main"]',
     '.main-content',
     '#main-content',
     '.post-content',
-    '.article-content'
+    '.article-content',
+    '.entry-content',
+    '.post',
+    '.content'
   ];
 
   let mainElement = null;
   for (const selector of mainSelectors) {
     const element = document.querySelector(selector);
-    if (element) {
+    if (element && element.innerText && element.innerText.length > 100) {
       mainElement = element;
       break;
     }
@@ -30,6 +38,8 @@ function extractPageContent() {
   const excludeSelectors = [
     'script',
     'style',
+    'noscript',
+    'iframe',
     'nav',
     'header',
     'footer',
@@ -37,7 +47,11 @@ function extractPageContent() {
     '.advertisement',
     '.ads',
     '.sidebar',
-    '.comments'
+    '.comments',
+    '.social-share',
+    '.related-posts',
+    'button',
+    'form'
   ];
 
   excludeSelectors.forEach(selector => {
@@ -45,9 +59,29 @@ function extractPageContent() {
     elements.forEach(el => el.remove());
   });
 
-  // テキストを抽出してクリーニング
-  let text = clone.innerText || clone.textContent || '';
-  text = text.replace(/\s+/g, ' ').trim();
+  // 段落ごとにテキストを抽出（改行を保持）
+  const paragraphs = [];
+  const textElements = clone.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, div[class*="text"]');
+  
+  if (textElements.length > 0) {
+    textElements.forEach(el => {
+      const text = el.innerText?.trim();
+      if (text && text.length > 0) {
+        paragraphs.push(text);
+      }
+    });
+  }
+
+  // 段落が取得できなかった場合はinnerTextを使用
+  let text = '';
+  if (paragraphs.length > 0) {
+    text = paragraphs.join('\n\n');
+  } else {
+    text = clone.innerText || clone.textContent || '';
+  }
+  
+  // 連続する空白を整理（改行は保持）
+  text = text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 
   // メタデータを取得
   const metadata = {
