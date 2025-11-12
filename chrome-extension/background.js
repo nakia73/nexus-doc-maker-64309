@@ -1,3 +1,6 @@
+// 親メニューのID
+const PARENT_MENU_ID = "gemini-upload-parent";
+
 // Gemini File Search APIクライアント
 class GeminiFileSearchClient {
   constructor(apiKey) {
@@ -170,9 +173,174 @@ ${content}`;
   }
 }
 
+// コンテキストメニューの初期化
+chrome.runtime.onInstalled.addListener(() => {
+  // 親メニューを作成
+  chrome.contextMenus.create({
+    id: PARENT_MENU_ID,
+    title: "Gemini File Searchにアップロード",
+    contexts: ["selection"]
+  });
+  
+  // 初期メニューを更新
+  updateContextMenus();
+});
+
+// コンテキストメニューを更新する関数
+async function updateContextMenus() {
+  try {
+    // 既存のサブメニューをすべて削除
+    await chrome.contextMenus.removeAll();
+    
+    // 親メニューを再作成
+    chrome.contextMenus.create({
+      id: PARENT_MENU_ID,
+      title: "Gemini File Searchにアップロード",
+      contexts: ["selection"]
+    });
+    
+    // APIキーを取得
+    const { apiKey } = await chrome.storage.sync.get(['apiKey']);
+    
+    if (!apiKey) {
+      // APIキーが未設定の場合
+      chrome.contextMenus.create({
+        id: "setup-required",
+        parentId: PARENT_MENU_ID,
+        title: "⚠️ APIキーを設定してください",
+        contexts: ["selection"],
+        enabled: false
+      });
+      return;
+    }
+    
+    // ストア一覧を取得
+    const client = new GeminiFileSearchClient(apiKey);
+    const stores = await client.listFileSearchStores();
+    
+    if (stores.length === 0) {
+      // ストアが存在しない場合
+      chrome.contextMenus.create({
+        id: "no-stores",
+        parentId: PARENT_MENU_ID,
+        title: "📁 ストアが見つかりません",
+        contexts: ["selection"],
+        enabled: false
+      });
+      return;
+    }
+    
+    // 各ストアをサブメニューとして追加
+    stores.forEach((store) => {
+      const displayName = store.displayName || store.name.split('/').pop();
+      chrome.contextMenus.create({
+        id: `store-${store.name}`,
+        parentId: PARENT_MENU_ID,
+        title: `📁 ${displayName}`,
+        contexts: ["selection"]
+      });
+    });
+    
+  } catch (error) {
+    console.error('Failed to update context menus:', error);
+    // エラー時のメニュー
+    chrome.contextMenus.create({
+      id: "error",
+      parentId: PARENT_MENU_ID,
+      title: "❌ メニューの読み込みに失敗",
+      contexts: ["selection"],
+      enabled: false
+    });
+  }
+}
+
+// コンテキストメニューがクリックされたときの処理
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  const menuItemId = info.menuItemId;
+  
+  // 親メニューまたは無効なメニューの場合は何もしない
+  if (menuItemId === PARENT_MENU_ID || 
+      menuItemId === 'setup-required' || 
+      menuItemId === 'no-stores' || 
+      menuItemId === 'error') {
+    if (menuItemId === 'setup-required') {
+      // 設定が必要な場合はポップアップを開く
+      chrome.action.openPopup();
+    }
+    return;
+  }
+  
+  // ストアのIDを抽出 (id形式: "store-fileSearchStores/...")
+  const storeName = menuItemId.replace('store-', '');
+  const selectedText = info.selectionText;
+  
+  try {
+    // APIキーを取得
+    const { apiKey } = await chrome.storage.sync.get(['apiKey']);
+    
+    if (!apiKey) {
+      throw new Error('APIキーが設定されていません');
+    }
+    
+    // ページのメタデータを取得
+    const pageTitle = tab.title || 'Untitled';
+    const pageUrl = tab.url || '';
+    
+    const metadata = {
+      title: `選択テキスト - ${pageTitle}`,
+      url: pageUrl,
+      extractedAt: new Date().toISOString(),
+      wordCount: selectedText.length
+    };
+    
+    // アップロード実行
+    const client = new GeminiFileSearchClient(apiKey);
+    await client.uploadTextAsFile(storeName, selectedText, metadata);
+    
+    // 成功通知を表示
+    const storeDisplayName = storeName.split('/').pop();
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icons/icon-base.png',
+      title: '✅ アップロード完了',
+      message: `選択テキストを「${storeDisplayName}」にアップロードしました`
+    });
+    
+    // 履歴に保存
+    const history = await chrome.storage.local.get('uploadHistory') || { uploadHistory: [] };
+    const newHistory = [
+      {
+        title: metadata.title,
+        url: pageUrl,
+        timestamp: Date.now(),
+        storeName: storeDisplayName,
+        wordCount: selectedText.length
+      },
+      ...(history.uploadHistory || [])
+    ].slice(0, 10);
+    
+    await chrome.storage.local.set({ uploadHistory: newHistory });
+    
+  } catch (error) {
+    console.error('Context menu upload error:', error);
+    // エラー通知を表示
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icons/icon-base.png',
+      title: '❌ アップロード失敗',
+      message: `エラー: ${error.message}`
+    });
+  }
+});
+
 // メッセージハンドラー
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'uploadToGemini') {
+  if (request.action === 'updateContextMenus') {
+    updateContextMenus()
+      .then(() => sendResponse({ success: true }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  } else if (request.action === 'uploadToGemini') {
     handleUpload(request.data)
       .then(result => sendResponse({ success: true, result }))
       .catch(error => sendResponse({ success: false, error: error.message }));
@@ -184,7 +352,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   } else if (request.action === 'createStore') {
     handleCreateStore(request.storeName)
-      .then(result => sendResponse({ success: true, store: result }))
+      .then(result => {
+        // ストア作成後にメニューを更新
+        updateContextMenus();
+        sendResponse({ success: true, store: result });
+      })
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }

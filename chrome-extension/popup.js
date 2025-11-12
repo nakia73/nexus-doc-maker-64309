@@ -35,6 +35,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadPageContent();
   await loadHistory();
   setupEventListeners();
+  
+  // コンテキストメニューを更新
+  chrome.runtime.sendMessage({ action: 'updateContextMenus' });
 });
 
 // イベントリスナー設定
@@ -86,6 +89,10 @@ async function saveApiKey() {
   try {
     await chrome.storage.sync.set({ apiKey });
     showStatus(elements.apiKeyStatus, 'APIキーを保存しました', 'success');
+    
+    // コンテキストメニューを更新
+    chrome.runtime.sendMessage({ action: 'updateContextMenus' });
+    
     await loadStores(); // 保存後にストア一覧を読み込み
   } catch (error) {
     showStatus(elements.apiKeyStatus, 'APIキーの保存に失敗しました', 'error');
@@ -200,6 +207,9 @@ async function createNewStore() {
     }
 
     showStatus(elements.createStoreStatus, 'ストアを作成しました', 'success');
+    
+    // コンテキストメニューを更新
+    chrome.runtime.sendMessage({ action: 'updateContextMenus' });
     
     // ストア一覧を再読み込み
     await loadStores();
