@@ -18,6 +18,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ストア情報を読み込む
   await loadStoreInfo();
+  
+  // 初期ロード時にストアリストを自動取得（保存済みストアがある場合）
+  await loadAndSelectStore();
 
   // 現在のページ情報を取得
   await loadPageContent();
@@ -220,22 +223,44 @@ async function loadStores() {
   const storeSelect = document.getElementById('storeSelectPopup');
   const loadBtn = document.getElementById('loadStoresBtn');
   
+  console.log('[Popup] ストア読み込み開始');
   errorDiv.style.display = 'none';
   loadBtn.disabled = true;
   loadBtn.textContent = '読み込み中...';
   
   try {
+    // API Keyが設定されているか確認
+    const settings = await chrome.storage.sync.get(['apiKey']);
+    if (!settings.apiKey) {
+      throw new Error('API Keyが設定されていません。設定画面で設定してください。');
+    }
+    
+    console.log('[Popup] バックグラウンドにメッセージ送信');
     const response = await chrome.runtime.sendMessage({ action: 'listStores' });
     
+    console.log('[Popup] バックグラウンドからの応答:', response);
+    
+    // レスポンスの存在確認
+    if (!response) {
+      throw new Error('バックグラウンドスクリプトからの応答がありません。拡張機能を再読み込みしてください。');
+    }
+    
     if (!response.success) {
-      throw new Error(response.error);
+      const errorMsg = response.error || '不明なエラーが発生しました';
+      throw new Error(errorMsg);
     }
     
     const stores = response.stores;
     
-    if (!stores || stores.length === 0) {
+    if (!stores || !Array.isArray(stores)) {
+      throw new Error('ストアデータの形式が正しくありません');
+    }
+    
+    if (stores.length === 0) {
       throw new Error('ストアが見つかりませんでした。Google AI Studioで作成してください。');
     }
+    
+    console.log('[Popup] ストア数:', stores.length);
     
     // ドロップダウンをクリア
     storeSelect.innerHTML = '<option value="">-- ストアを選択 --</option>';
@@ -251,17 +276,40 @@ async function loadStores() {
     storeSelection.style.display = 'block';
     
     // 保存済みのストアがあれば選択
-    const settings = await chrome.storage.sync.get(['selectedStore']);
-    if (settings.selectedStore) {
-      storeSelect.value = settings.selectedStore;
+    const savedSettings = await chrome.storage.sync.get(['selectedStore']);
+    if (savedSettings.selectedStore) {
+      storeSelect.value = savedSettings.selectedStore;
+      console.log('[Popup] 保存済みストアを選択:', savedSettings.selectedStore);
     }
     
+    showStatus('✓ ストアを読み込みました', 'success');
+    setTimeout(() => {
+      document.getElementById('status').textContent = '';
+    }, 2000);
+    
   } catch (error) {
+    console.error('[Popup] ストア読み込みエラー:', error);
     errorDiv.textContent = `エラー: ${error.message}`;
     errorDiv.style.display = 'block';
   } finally {
     loadBtn.disabled = false;
     loadBtn.textContent = 'ストア一覧を読み込む';
+  }
+}
+
+// 初期ロード時にストアリストを自動取得
+async function loadAndSelectStore() {
+  try {
+    const settings = await chrome.storage.sync.get(['selectedStore', 'apiKey']);
+    
+    // API Keyと保存済みストアがある場合のみ自動読み込み
+    if (settings.apiKey && settings.selectedStore) {
+      console.log('[Popup] 自動ストア読み込み開始');
+      await loadStores();
+    }
+  } catch (error) {
+    console.error('[Popup] 自動ストア読み込みエラー:', error);
+    // エラーは無視（手動で読み込み可能）
   }
 }
 
