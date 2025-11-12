@@ -1,6 +1,125 @@
 // 親メニューのID
 const PARENT_MENU_ID = "gemini-upload-parent";
 
+// アップロードキュークラス
+class UploadQueue {
+  constructor() {
+    this.queue = [];           // アップロード待ちのタスク
+    this.isProcessing = false; // 処理中フラグ
+    this.currentTask = null;   // 現在処理中のタスク
+  }
+
+  // キューにタスクを追加
+  async addTask(task) {
+    this.queue.push(task);
+    
+    // キュー追加通知
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icons/icon-base.png',
+      title: '📋 アップロードをキューに追加',
+      message: `キュー: ${this.queue.length}件待機中`
+    });
+    
+    // 処理開始
+    if (!this.isProcessing) {
+      await this.processQueue();
+    }
+  }
+
+  // キューを順次処理
+  async processQueue() {
+    if (this.isProcessing || this.queue.length === 0) {
+      return;
+    }
+
+    this.isProcessing = true;
+
+    while (this.queue.length > 0) {
+      this.currentTask = this.queue.shift();
+      const { storeName, selectedText, metadata, apiKey } = this.currentTask;
+
+      try {
+        // 進行状況通知
+        const storeDisplayName = storeName.split('/').pop();
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'icons/icon-base.png',
+          title: '⏳ アップロード中',
+          message: `「${storeDisplayName}」にアップロード中...\n残り: ${this.queue.length}件`
+        });
+
+        // アップロード実行
+        const client = new GeminiFileSearchClient(apiKey);
+        await client.uploadTextAsFile(storeName, selectedText, metadata);
+
+        // 成功通知
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'icons/icon-base.png',
+          title: '✅ アップロード完了',
+          message: `「${storeDisplayName}」にアップロードしました\n残り: ${this.queue.length}件`
+        });
+
+        // 履歴に保存
+        const history = await chrome.storage.local.get('uploadHistory') || { uploadHistory: [] };
+        const newHistory = [
+          {
+            title: metadata.title,
+            url: metadata.url,
+            timestamp: Date.now(),
+            storeName: storeDisplayName,
+            wordCount: selectedText.length
+          },
+          ...(history.uploadHistory || [])
+        ].slice(0, 10);
+
+        await chrome.storage.local.set({ uploadHistory: newHistory });
+
+      } catch (error) {
+        console.error('Queue upload error:', error);
+        
+        // エラー通知
+        const storeDisplayName = storeName.split('/').pop();
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'icons/icon-base.png',
+          title: '❌ アップロード失敗',
+          message: `「${storeDisplayName}」へのアップロードに失敗\nエラー: ${error.message}`
+        });
+      }
+
+      // 次のタスクまで少し待機（APIレート制限対策）
+      if (this.queue.length > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    this.isProcessing = false;
+    this.currentTask = null;
+
+    // 全て完了通知
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icons/icon-base.png',
+      title: '🎉 全てのアップロードが完了',
+      message: '全てのアップロード処理が完了しました'
+    });
+  }
+
+  // キューの状態を取得
+  getStatus() {
+    return {
+      queueLength: this.queue.length,
+      isProcessing: this.isProcessing,
+      currentTask: this.currentTask
+    };
+  }
+}
+
+// グローバルなアップロードキューを作成
+const uploadQueue = new UploadQueue();
+
 // Gemini File Search APIクライアント
 class GeminiFileSearchClient {
   constructor(apiKey) {
@@ -293,41 +412,20 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       wordCount: selectedText.length
     };
     
-    // アップロード実行
-    const client = new GeminiFileSearchClient(apiKey);
-    await client.uploadTextAsFile(storeName, selectedText, metadata);
-    
-    // 成功通知を表示
-    const storeDisplayName = storeName.split('/').pop();
-    chrome.notifications.create({
-      type: 'basic',
-      iconUrl: 'icons/icon-base.png',
-      title: '✅ アップロード完了',
-      message: `選択テキストを「${storeDisplayName}」にアップロードしました`
+    // キューに追加（即座に実行せず、キューで管理）
+    await uploadQueue.addTask({
+      storeName,
+      selectedText,
+      metadata,
+      apiKey
     });
     
-    // 履歴に保存
-    const history = await chrome.storage.local.get('uploadHistory') || { uploadHistory: [] };
-    const newHistory = [
-      {
-        title: metadata.title,
-        url: pageUrl,
-        timestamp: Date.now(),
-        storeName: storeDisplayName,
-        wordCount: selectedText.length
-      },
-      ...(history.uploadHistory || [])
-    ].slice(0, 10);
-    
-    await chrome.storage.local.set({ uploadHistory: newHistory });
-    
   } catch (error) {
-    console.error('Context menu upload error:', error);
-    // エラー通知を表示
+    console.error('Context menu error:', error);
     chrome.notifications.create({
       type: 'basic',
       iconUrl: 'icons/icon-base.png',
-      title: '❌ アップロード失敗',
+      title: '❌ エラー',
       message: `エラー: ${error.message}`
     });
   }
@@ -339,6 +437,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     updateContextMenus()
       .then(() => sendResponse({ success: true }))
       .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  } else if (request.action === 'getQueueStatus') {
+    const status = uploadQueue.getStatus();
+    sendResponse({ success: true, status });
     return true;
   } else if (request.action === 'uploadToGemini') {
     handleUpload(request.data)
@@ -377,25 +479,15 @@ async function handleUpload(data) {
     throw new Error('コンテンツが短すぎるか空です（最低100文字必要）');
   }
 
-  const client = new GeminiFileSearchClient(settings.apiKey);
-  const result = await client.uploadTextAsFile(settings.selectedStore, data.content, data.metadata);
-
-  // 履歴に追加
-  const history = await chrome.storage.local.get(['uploadHistory']);
-  const newHistory = history.uploadHistory || [];
-  newHistory.unshift({
-    title: data.metadata.title,
-    url: data.metadata.url,
-    uploadedAt: new Date().toISOString(),
-    storeName: settings.selectedStore
+  // キューに追加
+  await uploadQueue.addTask({
+    storeName: settings.selectedStore,
+    selectedText: data.content,
+    metadata: data.metadata,
+    apiKey: settings.apiKey
   });
 
-  if (newHistory.length > 10) {
-    newHistory.splice(10);
-  }
-
-  await chrome.storage.local.set({ uploadHistory: newHistory });
-  return result;
+  return { queued: true };
 }
 
 async function handleListStores() {
