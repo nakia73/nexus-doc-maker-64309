@@ -145,8 +145,8 @@ ${content}`;
 
   // オペレーションの完了をポーリング
   async pollOperation(operationName) {
-    const maxAttempts = 30;
-    const pollInterval = 2000; // 2秒
+    const maxAttempts = 30; // 5分 (10秒 x 30回)
+    const pollInterval = 10000; // 10秒
 
     for (let i = 0; i < maxAttempts; i++) {
       const response = await fetch(`${this.baseUrl}/${operationName}?key=${this.apiKey}`);

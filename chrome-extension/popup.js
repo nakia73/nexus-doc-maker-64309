@@ -19,7 +19,11 @@ const elements = {
   newStoreName: document.getElementById('newStoreName'),
   confirmCreateBtn: document.getElementById('confirmCreateBtn'),
   cancelCreateBtn: document.getElementById('cancelCreateBtn'),
-  createStoreStatus: document.getElementById('createStoreStatus')
+  createStoreStatus: document.getElementById('createStoreStatus'),
+  manualTitle: document.getElementById('manualTitle'),
+  manualUrl: document.getElementById('manualUrl'),
+  manualContent: document.getElementById('manualContent'),
+  manualUploadBtn: document.getElementById('manualUploadBtn')
 };
 
 let currentPageData = null;
@@ -41,8 +45,12 @@ function setupEventListeners() {
   elements.createStoreBtn.addEventListener('click', showCreateStoreModal);
   elements.storeSelect.addEventListener('change', handleStoreSelection);
   elements.uploadBtn.addEventListener('click', handleUpload);
+  elements.manualUploadBtn.addEventListener('click', handleManualUpload);
   elements.confirmCreateBtn.addEventListener('click', createNewStore);
   elements.cancelCreateBtn.addEventListener('click', hideCreateStoreModal);
+  
+  // 手動入力の文字数カウント
+  elements.manualContent.addEventListener('input', updateManualWordCount);
   
   // モーダル外クリックで閉じる
   elements.createStoreModal.addEventListener('click', (e) => {
@@ -150,6 +158,12 @@ function updateUploadButtonState() {
   const hasStore = elements.storeSelect.value !== '';
   const hasContent = currentPageData && currentPageData.content;
   elements.uploadBtn.disabled = !(hasStore && hasContent);
+  
+  // 手動入力ボタンの状態更新
+  const hasManualContent = elements.manualContent && elements.manualContent.value.trim().length > 0;
+  if (elements.manualUploadBtn) {
+    elements.manualUploadBtn.disabled = !(hasStore && hasManualContent);
+  }
 }
 
 // ストア作成モーダル
@@ -211,17 +225,29 @@ async function loadPageContent() {
     
     const response = await chrome.tabs.sendMessage(tab.id, { action: 'extractContent' });
     
-    if (response && response.content) {
-      currentPageData = response;
-      displayPageInfo(response);
+    if (response && response.success && response.data) {
+      currentPageData = response.data;
+      displayPageInfo(response.data);
       updateUploadButtonState();
+      // 自動抽出成功時は手動入力を非表示
+      document.getElementById('manualInputSection').style.display = 'none';
+      document.getElementById('autoExtractSection').style.display = 'block';
     } else {
-      elements.contentPreview.textContent = 'コンテンツを取得できませんでした';
+      // 自動抽出失敗時は手動入力を表示
+      showManualInputFallback();
     }
   } catch (error) {
     console.error('Content extraction error:', error);
-    elements.contentPreview.textContent = 'このページからコンテンツを抽出できません';
+    // エラー時も手動入力を表示
+    showManualInputFallback();
   }
+}
+
+// 手動入力フォールバックを表示
+function showManualInputFallback() {
+  document.getElementById('autoExtractSection').style.display = 'none';
+  document.getElementById('manualInputSection').style.display = 'block';
+  elements.contentPreview.textContent = 'このページからコンテンツを自動抽出できませんでした。下記に手動で入力してください。';
 }
 
 function displayPageInfo(data) {
@@ -329,4 +355,80 @@ function formatDate(isoString) {
     month: 'short',
     day: 'numeric'
   });
+}
+
+// 手動入力の文字数カウント
+function updateManualWordCount() {
+  const content = elements.manualContent.value;
+  const wordCount = content.trim().split(/\s+/).length;
+  document.getElementById('manualWordCount').textContent = wordCount.toLocaleString() + ' 文字';
+  updateUploadButtonState();
+}
+
+// 手動アップロード処理
+async function handleManualUpload() {
+  const title = elements.manualTitle.value.trim();
+  const url = elements.manualUrl.value.trim();
+  const content = elements.manualContent.value.trim();
+  
+  if (!content) {
+    showStatus(elements.uploadStatus, 'コンテンツを入力してください', 'error');
+    return;
+  }
+  
+  const result = await chrome.storage.sync.get(['selectedStore']);
+  if (!result.selectedStore) {
+    showStatus(elements.uploadStatus, 'ストアを選択してください', 'error');
+    return;
+  }
+  
+  // 手動入力データを構造化
+  const manualData = {
+    content: content,
+    metadata: {
+      title: title || 'Untitled',
+      url: url || window.location.href || 'Manual Input',
+      wordCount: content.split(/\s+/).length,
+      extractedAt: new Date().toISOString(),
+      description: '',
+      publishedDate: null
+    }
+  };
+  
+  elements.manualUploadBtn.disabled = true;
+  elements.uploadProgress.style.display = 'block';
+  showStatus(elements.uploadStatus, 'アップロード中...', 'info');
+  
+  try {
+    const response = await chrome.runtime.sendMessage({
+      action: 'uploadToGemini',
+      data: manualData
+    });
+    
+    if (!response.success) {
+      throw new Error(response.error || 'アップロードに失敗しました');
+    }
+    
+    showStatus(elements.uploadStatus, 'アップロードに成功しました！', 'success');
+    
+    // 入力欄をクリア
+    elements.manualTitle.value = '';
+    elements.manualUrl.value = '';
+    elements.manualContent.value = '';
+    updateManualWordCount();
+    
+    await loadHistory();
+    
+    setTimeout(() => {
+      elements.uploadStatus.textContent = '';
+      elements.uploadProgress.style.display = 'none';
+    }, 3000);
+  } catch (error) {
+    console.error('Manual upload error:', error);
+    showStatus(elements.uploadStatus, `エラー: ${error.message}`, 'error');
+    elements.uploadProgress.style.display = 'none';
+  } finally {
+    elements.manualUploadBtn.disabled = false;
+    updateUploadButtonState();
+  }
 }

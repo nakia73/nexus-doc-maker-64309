@@ -36,9 +36,9 @@
       </div>
     </div>
 
-    <!-- Page Info Section -->
-    <div class="section" id="pageInfoSection">
-      <h3>ページ情報</h3>
+    <!-- 自動抽出セクション -->
+    <div id="autoExtractSection" class="section">
+      <h3>📄 ページ情報</h3>
       <div class="page-info">
         <div class="info-row">
           <strong>タイトル:</strong>
@@ -57,15 +57,38 @@
         <strong>コンテンツプレビュー:</strong>
         <div id="contentPreview" class="preview-text">読み込み中...</div>
       </div>
+      <button id="uploadBtn" class="btn-upload" disabled>
+        📤 アップロード
+      </button>
     </div>
 
-    <!-- Upload Button -->
-    <button id="uploadBtn" class="btn-upload" disabled>
-      アップロード
-    </button>
-    <div id="uploadStatus" class="status-message"></div>
-    <div id="uploadProgress" class="progress-bar" style="display: none;">
-      <div class="progress-fill"></div>
+    <!-- 手動入力セクション -->
+    <div id="manualInputSection" class="section" style="display: none;">
+      <h3>✍️ 手動入力</h3>
+      <div class="manual-input-form">
+        <div class="form-group">
+          <label for="manualTitle">タイトル（任意）:</label>
+          <input type="text" id="manualTitle" placeholder="ページタイトル">
+        </div>
+        <div class="form-group">
+          <label for="manualUrl">URL（任意）:</label>
+          <input type="text" id="manualUrl" placeholder="https://example.com">
+        </div>
+        <div class="form-group">
+          <label for="manualContent">コンテンツ:</label>
+          <textarea id="manualContent" rows="10" placeholder="アップロードするテキストをここに貼り付けてください"></textarea>
+          <div class="word-count-display">文字数: <span id="manualWordCount">0 文字</span></div>
+        </div>
+      </div>
+      <button id="manualUploadBtn" class="btn-upload" disabled>📤 手動アップロード</button>
+    </div>
+
+    <!-- アップロードステータス -->
+    <div class="section">
+      <div id="uploadStatus" class="status-message"></div>
+      <div id="uploadProgress" class="progress-bar" style="display: none;">
+        <div class="progress-fill"></div>
+      </div>
     </div>
 
     <!-- History Section -->
