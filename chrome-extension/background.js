@@ -3,125 +3,170 @@ class GeminiFileSearchClient {
   constructor(apiKey) {
     this.apiKey = apiKey;
     this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
+    this.uploadBaseUrl = 'https://generativelanguage.googleapis.com/upload/v1beta';
   }
 
   // ストア一覧を取得
   async listFileSearchStores() {
     try {
-      const response = await fetch(`${this.baseUrl}/corpora?key=${this.apiKey}`);
+      const response = await fetch(`${this.baseUrl}/fileSearchStores?key=${this.apiKey}`);
       if (!response.ok) {
         throw new Error(`Failed to list stores: ${response.status}`);
       }
       const data = await response.json();
-      return data.corpora || [];
+      return data.fileSearchStores || [];
     } catch (error) {
       console.error('listFileSearchStores error:', error);
       throw error;
     }
   }
 
-  async getOrCreateCorpus(name) {
+  // 新規ストアを作成
+  async createFileSearchStore(displayName) {
     try {
-      // Chrome Storageから選択されたストアを取得
-      const settings = await chrome.storage.sync.get(['selectedStore']);
-      
-      if (settings.selectedStore) {
-        // ストアが選択されている場合はそれを使用
-        console.log('Using selected store:', settings.selectedStore);
-        return settings.selectedStore;
-      }
-
-      // 既存のコーパス一覧を取得
-      const listResponse = await fetch(`${this.baseUrl}/corpora?key=${this.apiKey}`);
-      if (!listResponse.ok) {
-        throw new Error(`Failed to list corpora: ${listResponse.status}`);
-      }
-
-      const listData = await listResponse.json();
-      const existingCorpus = listData.corpora?.find(c => c.displayName === name);
-
-      if (existingCorpus) {
-        return existingCorpus.name;
-      }
-
-      // 新規作成
-      const createResponse = await fetch(`${this.baseUrl}/corpora?key=${this.apiKey}`, {
+      const response = await fetch(`${this.baseUrl}/fileSearchStores?key=${this.apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          displayName: name,
-          description: 'Web pages uploaded via Chrome Extension'
-        })
+        body: JSON.stringify({ displayName })
       });
 
-      if (!createResponse.ok) {
-        throw new Error(`Failed to create corpus: ${createResponse.status}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to create store: ${response.status} - ${errorText}`);
       }
 
-      const createData = await createResponse.json();
-      return createData.name;
+      return await response.json();
     } catch (error) {
-      console.error('getOrCreateCorpus error:', error);
+      console.error('createFileSearchStore error:', error);
       throw error;
     }
   }
 
-  async uploadDocument(corpusName, content, metadata) {
+  // テキストコンテンツをMarkdownファイルとしてアップロード
+  async uploadTextAsFile(storeName, content, metadata) {
     try {
-      // ドキュメントを作成
-      const document = {
-        displayName: metadata.title || 'Untitled Page',
-        customMetadata: [
-          { key: 'url', stringValue: metadata.url },
-          { key: 'extractedAt', stringValue: metadata.extractedAt },
-          { key: 'wordCount', numericValue: metadata.wordCount }
-        ]
-      };
+      // Step 1: テキストからMarkdownファイルを作成
+      const markdownContent = `# ${metadata.title}
 
-      if (metadata.description) {
-        document.customMetadata.push({
-          key: 'description',
-          stringValue: metadata.description.substring(0, 500)
-        });
-      }
+**URL:** ${metadata.url}  
+**抽出日時:** ${metadata.extractedAt}  
+**文字数:** ${metadata.wordCount}
 
-      if (metadata.publishedDate) {
-        document.customMetadata.push({
-          key: 'publishedDate',
-          stringValue: metadata.publishedDate
-        });
-      }
+---
 
-      // テキストコンテンツを追加
-      const textContent = `Title: ${metadata.title}\nURL: ${metadata.url}\n\n${content}`;
+${content}`;
+
+      const blob = new Blob([markdownContent], { type: 'text/markdown' });
+      const fileName = `${metadata.title.replace(/[^\w\s]/gi, '_').substring(0, 50)}.md`;
       
-      const response = await fetch(
-        `${this.baseUrl}/${corpusName}/documents?key=${this.apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...document,
-            parts: [
-              {
-                text: textContent.substring(0, 50000) // 最大50KB
-              }
-            ]
-          })
-        }
-      );
+      // Step 2: Files APIで初期リクエスト (resumable upload)
+      const numBytes = blob.size;
+      const initialUrl = `${this.uploadBaseUrl}/files?key=${this.apiKey}`;
+      
+      console.log('Starting file upload:', { fileName, size: numBytes });
+      
+      const initialResponse = await fetch(initialUrl, {
+        method: 'POST',
+        headers: {
+          'X-Goog-Upload-Protocol': 'resumable',
+          'X-Goog-Upload-Command': 'start',
+          'X-Goog-Upload-Header-Content-Length': numBytes.toString(),
+          'X-Goog-Upload-Header-Content-Type': 'text/markdown',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          file: {
+            display_name: fileName
+          }
+        })
+      });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to upload document: ${response.status} - ${errorText}`);
+      if (!initialResponse.ok) {
+        const errorText = await initialResponse.text();
+        throw new Error(`Upload init failed: ${initialResponse.status} - ${errorText}`);
       }
 
-      const data = await response.json();
-      return data;
+      const uploadUrl = initialResponse.headers.get('x-goog-upload-url');
+      if (!uploadUrl) {
+        throw new Error('Upload URL not found in response headers');
+      }
+
+      console.log('Got upload URL, uploading file bytes...');
+
+      // Step 3: ファイルバイトをアップロード
+      const fileBuffer = await blob.arrayBuffer();
+      
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Length': numBytes.toString(),
+          'X-Goog-Upload-Offset': '0',
+          'X-Goog-Upload-Command': 'upload, finalize',
+        },
+        body: fileBuffer
+      });
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error(`File upload failed: ${uploadResponse.status} - ${errorText}`);
+      }
+
+      const uploadedFile = await uploadResponse.json();
+      const uploadedFileName = uploadedFile.file.name;
+
+      console.log('File uploaded successfully:', uploadedFileName);
+
+      // Step 4: ストアにインポート
+      const importUrl = `${this.baseUrl}/${storeName}:importFile?key=${this.apiKey}`;
+      
+      console.log('Importing file to store:', storeName);
+      
+      const importResponse = await fetch(importUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: uploadedFileName })
+      });
+
+      if (!importResponse.ok) {
+        const errorText = await importResponse.text();
+        throw new Error(`Import failed: ${importResponse.status} - ${errorText}`);
+      }
+
+      const operation = await importResponse.json();
+      console.log('Import operation started:', operation.name);
+
+      // Step 5: オペレーションの完了を待つ
+      return await this.pollOperation(operation.name);
     } catch (error) {
-      console.error('uploadDocument error:', error);
+      console.error('uploadTextAsFile error:', error);
       throw error;
     }
+  }
+
+  // オペレーションの完了をポーリング
+  async pollOperation(operationName) {
+    const maxAttempts = 30;
+    const pollInterval = 2000; // 2秒
+
+    for (let i = 0; i < maxAttempts; i++) {
+      const response = await fetch(`${this.baseUrl}/${operationName}?key=${this.apiKey}`);
+      
+      if (!response.ok) {
+        throw new Error(`Operation polling failed: ${response.status}`);
+      }
+
+      const operation = await response.json();
+      
+      if (operation.done) {
+        console.log('Operation completed:', operation);
+        return operation;
+      }
+
+      console.log(`Polling attempt ${i + 1}/${maxAttempts}...`);
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+
+    throw new Error('Operation timeout: exceeded maximum polling attempts');
   }
 }
 
@@ -131,35 +176,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     handleUpload(request.data)
       .then(result => sendResponse({ success: true, result }))
       .catch(error => sendResponse({ success: false, error: error.message }));
-    return true; // 非同期レスポンスを許可
+    return true;
   } else if (request.action === 'listStores') {
     handleListStores()
       .then(result => sendResponse({ success: true, stores: result }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  } else if (request.action === 'createStore') {
+    handleCreateStore(request.storeName)
+      .then(result => sendResponse({ success: true, store: result }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
 });
 
 async function handleUpload(data) {
-  // 設定を取得
-  const settings = await chrome.storage.sync.get(['apiKey', 'corpusName']);
+  const settings = await chrome.storage.sync.get(['apiKey', 'selectedStore']);
   
   if (!settings.apiKey) {
-    throw new Error('API Key not set. Please configure in Settings.');
+    throw new Error('APIキーが設定されていません');
+  }
+
+  if (!settings.selectedStore) {
+    throw new Error('ストアが選択されていません');
   }
 
   if (!data.content || data.content.length < 100) {
-    throw new Error('Content too short or empty. Minimum 100 characters required.');
+    throw new Error('コンテンツが短すぎるか空です（最低100文字必要）');
   }
 
-  const corpusName = settings.corpusName || 'Web Pages Corpus';
   const client = new GeminiFileSearchClient(settings.apiKey);
-
-  // コーパスを取得または作成
-  const corpus = await client.getOrCreateCorpus(corpusName);
-  
-  // ドキュメントをアップロード
-  const result = await client.uploadDocument(corpus, data.content, data.metadata);
+  const result = await client.uploadTextAsFile(settings.selectedStore, data.content, data.metadata);
 
   // 履歴に追加
   const history = await chrome.storage.local.get(['uploadHistory']);
@@ -168,16 +215,14 @@ async function handleUpload(data) {
     title: data.metadata.title,
     url: data.metadata.url,
     uploadedAt: new Date().toISOString(),
-    documentId: result.name
+    storeName: settings.selectedStore
   });
 
-  // 最新10件のみ保持
   if (newHistory.length > 10) {
     newHistory.splice(10);
   }
 
   await chrome.storage.local.set({ uploadHistory: newHistory });
-
   return result;
 }
 
@@ -185,9 +230,24 @@ async function handleListStores() {
   const settings = await chrome.storage.sync.get(['apiKey']);
   
   if (!settings.apiKey) {
-    throw new Error('API Key not set. Please configure in Settings.');
+    throw new Error('APIキーが設定されていません');
   }
 
   const client = new GeminiFileSearchClient(settings.apiKey);
   return await client.listFileSearchStores();
+}
+
+async function handleCreateStore(storeName) {
+  const settings = await chrome.storage.sync.get(['apiKey']);
+  
+  if (!settings.apiKey) {
+    throw new Error('APIキーが設定されていません');
+  }
+
+  if (!storeName || storeName.trim() === '') {
+    throw new Error('ストア名を入力してください');
+  }
+
+  const client = new GeminiFileSearchClient(settings.apiKey);
+  return await client.createFileSearchStore(storeName);
 }
