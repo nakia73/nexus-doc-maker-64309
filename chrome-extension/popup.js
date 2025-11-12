@@ -228,26 +228,20 @@ async function loadPageContent() {
     if (response && response.success && response.data) {
       currentPageData = response.data;
       displayPageInfo(response.data);
-      updateUploadButtonState();
-      // 自動抽出成功時は手動入力を非表示
-      document.getElementById('manualInputSection').style.display = 'none';
-      document.getElementById('autoExtractSection').style.display = 'block';
     } else {
-      // 自動抽出失敗時は手動入力を表示
-      showManualInputFallback();
+      elements.contentPreview.textContent = 'このページからコンテンツを自動抽出できませんでした。';
+      elements.pageTitle.textContent = '-';
+      elements.pageUrl.textContent = '-';
+      elements.wordCount.textContent = '-';
     }
   } catch (error) {
     console.error('Content extraction error:', error);
-    // エラー時も手動入力を表示
-    showManualInputFallback();
+    elements.contentPreview.textContent = 'コンテンツの抽出中にエラーが発生しました。';
+    elements.pageTitle.textContent = '-';
+    elements.pageUrl.textContent = '-';
+    elements.wordCount.textContent = '-';
   }
-}
-
-// 手動入力フォールバックを表示
-function showManualInputFallback() {
-  document.getElementById('autoExtractSection').style.display = 'none';
-  document.getElementById('manualInputSection').style.display = 'block';
-  elements.contentPreview.textContent = 'このページからコンテンツを自動抽出できませんでした。下記に手動で入力してください。';
+  updateUploadButtonState();
 }
 
 function displayPageInfo(data) {
