@@ -10,17 +10,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // アップロードボタン
   document.getElementById('uploadBtn').addEventListener('click', handleUpload);
 
-  // ストア読み込みボタン
-  document.getElementById('loadStoresBtn').addEventListener('click', loadStores);
+  // ストア更新ボタン
+  document.getElementById('refreshStoresBtn').addEventListener('click', loadStores);
   
   // ストア選択
   document.getElementById('storeSelectPopup').addEventListener('change', handleStoreSelection);
 
-  // ストア情報を読み込む
-  await loadStoreInfo();
-  
-  // 初期ロード時にストアリストを自動取得（保存済みストアがある場合）
-  await loadAndSelectStore();
+  // 初期ロード時に自動的にストアリストを読み込む
+  await loadStores();
 
   // 現在のページ情報を取得
   await loadPageContent();
@@ -191,27 +188,25 @@ function formatDate(isoString) {
   return date.toLocaleDateString('ja-JP');
 }
 
-// ストア情報を読み込んで表示
-async function loadStoreInfo() {
-  const settings = await chrome.storage.sync.get(['selectedStore']);
-  const currentStoreSpan = document.getElementById('currentStore');
+// アップロードボタンの状態を更新
+function updateUploadButtonState() {
+  const storeSelect = document.getElementById('storeSelectPopup');
   const storeWarning = document.getElementById('storeWarning');
   const uploadBtn = document.getElementById('uploadBtn');
   
-  if (settings.selectedStore) {
+  if (storeSelect.value && storeSelect.value !== '') {
     // ストアが選択されている
-    const storeName = settings.selectedStore.split('/').pop();
-    currentStoreSpan.textContent = storeName;
     storeWarning.style.display = 'none';
+    if (uploadBtn) {
+      uploadBtn.disabled = false;
+      uploadBtn.title = '';
+    }
   } else {
     // ストアが未選択
-    currentStoreSpan.textContent = '未設定';
     storeWarning.style.display = 'block';
-    
-    // アップロードボタンを無効化
     if (uploadBtn) {
       uploadBtn.disabled = true;
-      uploadBtn.title = 'ストアを設定してください';
+      uploadBtn.title = 'ストアを選択してください';
     }
   }
 }
@@ -219,20 +214,22 @@ async function loadStoreInfo() {
 // ストア一覧を読み込む
 async function loadStores() {
   const errorDiv = document.getElementById('storeLoadError');
-  const storeSelection = document.getElementById('storeSelection');
   const storeSelect = document.getElementById('storeSelectPopup');
-  const loadBtn = document.getElementById('loadStoresBtn');
+  const refreshBtn = document.getElementById('refreshStoresBtn');
   
   console.log('[Popup] ストア読み込み開始');
   errorDiv.style.display = 'none';
-  loadBtn.disabled = true;
-  loadBtn.textContent = '読み込み中...';
+  
+  // ローディング表示
+  storeSelect.innerHTML = '<option value="">読み込み中...</option>';
+  storeSelect.disabled = true;
+  if (refreshBtn) refreshBtn.disabled = true;
   
   try {
     // API Keyが設定されているか確認
-    const settings = await chrome.storage.sync.get(['apiKey']);
+    const settings = await chrome.storage.sync.get(['apiKey', 'selectedStore']);
     if (!settings.apiKey) {
-      throw new Error('API Keyが設定されていません。設定画面で設定してください。');
+      throw new Error('API Keyが設定されていません。設定画面(⚙️)で設定してください。');
     }
     
     console.log('[Popup] バックグラウンドにメッセージ送信');
@@ -273,43 +270,23 @@ async function loadStores() {
       storeSelect.appendChild(option);
     });
     
-    storeSelection.style.display = 'block';
-    
     // 保存済みのストアがあれば選択
-    const savedSettings = await chrome.storage.sync.get(['selectedStore']);
-    if (savedSettings.selectedStore) {
-      storeSelect.value = savedSettings.selectedStore;
-      console.log('[Popup] 保存済みストアを選択:', savedSettings.selectedStore);
+    if (settings.selectedStore) {
+      storeSelect.value = settings.selectedStore;
+      console.log('[Popup] 保存済みストアを選択:', settings.selectedStore);
     }
     
-    showStatus('✓ ストアを読み込みました', 'success');
-    setTimeout(() => {
-      document.getElementById('status').textContent = '';
-    }, 2000);
+    // アップロードボタンの状態を更新
+    updateUploadButtonState();
     
   } catch (error) {
     console.error('[Popup] ストア読み込みエラー:', error);
-    errorDiv.textContent = `エラー: ${error.message}`;
+    storeSelect.innerHTML = '<option value="">エラー: ストアを読み込めません</option>';
+    errorDiv.textContent = error.message;
     errorDiv.style.display = 'block';
   } finally {
-    loadBtn.disabled = false;
-    loadBtn.textContent = 'ストア一覧を読み込む';
-  }
-}
-
-// 初期ロード時にストアリストを自動取得
-async function loadAndSelectStore() {
-  try {
-    const settings = await chrome.storage.sync.get(['selectedStore', 'apiKey']);
-    
-    // API Keyと保存済みストアがある場合のみ自動読み込み
-    if (settings.apiKey && settings.selectedStore) {
-      console.log('[Popup] 自動ストア読み込み開始');
-      await loadStores();
-    }
-  } catch (error) {
-    console.error('[Popup] 自動ストア読み込みエラー:', error);
-    // エラーは無視（手動で読み込み可能）
+    storeSelect.disabled = false;
+    if (refreshBtn) refreshBtn.disabled = false;
   }
 }
 
@@ -317,17 +294,22 @@ async function loadAndSelectStore() {
 async function handleStoreSelection(e) {
   const selectedStore = e.target.value;
   
+  console.log('[Popup] ストア選択:', selectedStore);
+  
   if (selectedStore) {
     try {
       await chrome.storage.sync.set({ selectedStore });
-      await loadStoreInfo(); // 表示を更新
+      updateUploadButtonState(); // アップロードボタンの状態を更新
       showStatus('✓ ストアを選択しました', 'success');
       
       setTimeout(() => {
         document.getElementById('status').textContent = '';
       }, 2000);
     } catch (error) {
+      console.error('[Popup] ストア選択エラー:', error);
       showStatus('保存中にエラーが発生しました', 'error');
     }
+  } else {
+    updateUploadButtonState();
   }
 }
