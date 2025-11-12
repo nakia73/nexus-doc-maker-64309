@@ -5,8 +5,32 @@ class GeminiFileSearchClient {
     this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
   }
 
+  // ストア一覧を取得
+  async listFileSearchStores() {
+    try {
+      const response = await fetch(`${this.baseUrl}/corpora?key=${this.apiKey}`);
+      if (!response.ok) {
+        throw new Error(`Failed to list stores: ${response.status}`);
+      }
+      const data = await response.json();
+      return data.corpora || [];
+    } catch (error) {
+      console.error('listFileSearchStores error:', error);
+      throw error;
+    }
+  }
+
   async getOrCreateCorpus(name) {
     try {
+      // Chrome Storageから選択されたストアを取得
+      const settings = await chrome.storage.sync.get(['selectedStore']);
+      
+      if (settings.selectedStore) {
+        // ストアが選択されている場合はそれを使用
+        console.log('Using selected store:', settings.selectedStore);
+        return settings.selectedStore;
+      }
+
       // 既存のコーパス一覧を取得
       const listResponse = await fetch(`${this.baseUrl}/corpora?key=${this.apiKey}`);
       if (!listResponse.ok) {
@@ -108,6 +132,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .then(result => sendResponse({ success: true, result }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true; // 非同期レスポンスを許可
+  } else if (request.action === 'listStores') {
+    handleListStores()
+      .then(result => sendResponse({ success: true, stores: result }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
   }
 });
 
@@ -150,4 +179,15 @@ async function handleUpload(data) {
   await chrome.storage.local.set({ uploadHistory: newHistory });
 
   return result;
+}
+
+async function handleListStores() {
+  const settings = await chrome.storage.sync.get(['apiKey']);
+  
+  if (!settings.apiKey) {
+    throw new Error('API Key not set. Please configure in Settings.');
+  }
+
+  const client = new GeminiFileSearchClient(settings.apiKey);
+  return await client.listFileSearchStores();
 }

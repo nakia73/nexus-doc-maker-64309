@@ -1,156 +1,192 @@
-# Gemini File Search Uploader - Chrome拡張機能
+# Gemini File Search Uploader - Chrome Extension
 
-現在開いているWebページを Google の Gemini File Search Store に簡単にアップロードできるChrome拡張機能です。
+Chrome拡張機能として、現在開いているWebページの内容を自動的に抽出し、Google Gemini File Search Storeにアップロードするツールです。
 
-## 機能
+## 🎯 主な機能
 
-- 📄 **ページコンテンツ抽出**: 現在開いているWebページから主要なテキストとメタデータを自動抽出
-- ☁️ **Gemini連携**: Gemini File Search APIに直接アップロード
-- 📚 **コーパス管理**: 自動でコーパスを作成・管理
-- 📊 **履歴管理**: 最近アップロードしたページの履歴を表示（最大10件）
-- ⚙️ **カスタマイズ可能**: APIキーやコーパス名を設定画面で管理
+- **自動テキスト抽出**: 開いているWebページから主要なコンテンツを自動抽出
+- **ストア選択**: 既存のFile Search Storeから任意のアップロード先を選択可能
+- **メタデータ保存**: ページタイトル、URL、説明、文字数などを自動保存
+- **アップロード履歴**: 最近アップロードしたページの履歴を表示
+- **API Key管理**: Gemini API Keyを安全に保存・管理
 
-## インストール方法
+## 📦 インストール方法
 
-### 1. ファイルの準備
+### 1. 拡張機能の読み込み
 
 ```bash
-# プロジェクトのルートディレクトリで
-cd chrome-extension
+1. Chrome ブラウザを開く
+2. chrome://extensions/ にアクセス
+3. 右上の「デベロッパーモード」をONにする
+4. 「パッケージ化されていない拡張機能を読み込む」をクリック
+5. chrome-extensionフォルダを選択
 ```
 
-### 2. アイコンファイルの作成
-
-生成済みのベースアイコン（`icons/icon-base.png`）を各サイズにリサイズしてください：
-
-**方法1: ImageMagickを使用（推奨）**
+### 2. アイコンの準備（オプション）
 
 ```bash
-cd chrome-extension
-# ImageMagickで自動リサイズ
-convert icons/icon-base.png -resize 128x128 icons/icon128.png
-convert icons/icon-base.png -resize 48x48 icons/icon48.png
-convert icons/icon-base.png -resize 16x16 icons/icon16.png
-```
-
-**方法2: オンラインツールを使用**
-
-1. `icons/icon-base.png` を [TinyPNG](https://tinypng.com/) や [iLoveIMG](https://www.iloveimg.com/ja/resize-image) でリサイズ
-2. 128x128、48x48、16x16の3つのサイズで保存
-3. それぞれ `icon128.png`, `icon48.png`, `icon16.png` として保存
-
-**方法3: プレースホルダーを使用（テスト用）**
-
-```bash
+# ImageMagickを使用してアイコンをリサイズ
 cd chrome-extension/icons
-# 単色のプレースホルダー
-convert -size 128x128 xc:#1a73e8 icon128.png
-convert -size 48x48 xc:#1a73e8 icon48.png
-convert -size 16x16 xc:#1a73e8 icon16.png
+convert icon-base.png -resize 128x128 icon128.png
+convert icon-base.png -resize 48x48 icon48.png
+convert icon-base.png -resize 16x16 icon16.png
 ```
 
-### 3. Chromeに拡張機能を読み込む
+## ⚙️ 初期設定
 
-1. Chrome で `chrome://extensions/` を開く
-2. 右上の「デベロッパーモード」を有効化
-3. 「パッケージ化されていない拡張機能を読み込む」をクリック
-4. `chrome-extension` フォルダを選択
-
-## 初期設定
-
-### 1. Gemini API Keyの取得
+### Step 1: API Keyの取得と設定
 
 1. [Google AI Studio](https://makersuite.google.com/app/apikey) にアクセス
-2. 「Create API Key」をクリック
-3. API Keyをコピー
+2. 「Create API Key」をクリックしてAPI Keyを取得
+3. Chrome拡張機能アイコンをクリック
+4. 右上の⚙️（設定）ボタンをクリック
+5. 「Gemini API Key」フィールドにAPI Keyを貼り付け
+6. 「保存」ボタンをクリック
+7. 「API接続テスト」で接続を確認
 
-### 2. 拡張機能の設定
+### Step 2: ストアの選択
 
-1. 拡張機能アイコンをクリック
-2. 右上の「⚙️」（設定）ボタンをクリック
-3. 以下を入力：
-   - **Gemini API Key**: 取得したAPIキーを貼り付け
-   - **コーパス名**: 任意の名前（デフォルト: "Web Pages Corpus"）
-   - **最小文字数**: アップロードする最小文字数（デフォルト: 100）
-4. 「保存」をクリック
-5. （オプション）「API接続テスト」で接続を確認
+1. 設定画面で「ストア一覧を読み込む」ボタンをクリック
+2. ドロップダウンリストから使用したいFile Search Storeを選択
+3. 選択したストアは自動的に保存されます
 
-## 使い方
+**重要**: ストアが存在しない場合は、[Google AI Studio](https://aistudio.google.com/)で事前にFile Search Storeを作成してください。
+
+### Step 3: 抽出設定（オプション）
+
+- **最小文字数**: アップロードする最小文字数を設定（デフォルト: 100文字）
+  - これより短いページはアップロードされません
+
+## 📖 使用方法
 
 ### 基本的な使い方
 
 1. アップロードしたいWebページを開く
-2. 拡張機能アイコンをクリック
-3. ページ情報が表示されるので確認
+2. Chrome拡張機能アイコンをクリック
+3. ポップアップで以下の情報を確認：
+   - 選択中のストア名
+   - ページタイトル
+   - URL
+   - 抽出された文字数
+   - コンテンツのプレビュー
 4. 「Upload to Gemini File Search」ボタンをクリック
 5. アップロード完了まで待つ（通常数秒）
 
 ### アップロード履歴の確認
 
-- ポップアップ下部に最近アップロードしたページが表示されます
-- タイトル、URL、アップロード日時が確認できます
+- ポップアップの下部に最近アップロードした10件が表示されます
+- 各項目には以下の情報が含まれます：
+  - ページタイトル
+  - URL
+  - アップロード日時
 
-### 履歴のエクスポート
+## 🔧 技術仕様
 
+### ファイル構成
+
+```
+chrome-extension/
+├── manifest.json          # Manifest V3設定
+├── content.js            # コンテンツ抽出スクリプト
+├── background.js         # バックグラウンド処理とAPI連携
+├── popup.html            # ポップアップUI
+├── popup.js              # ポップアップロジック
+├── options.html          # 設定画面UI
+├── options.js            # 設定画面ロジック
+├── styles.css            # スタイルシート
+└── icons/                # アイコン画像
+```
+
+### 使用API
+
+- **Gemini File Search API v1beta**
+  - エンドポイント: `https://generativelanguage.googleapis.com/v1beta`
+  - 使用メソッド:
+    - `GET /corpora` - ストア一覧の取得
+    - `POST /corpora` - 新規ストアの作成
+    - `POST /{corpusName}/documents` - ドキュメントのアップロード
+
+### データストレージ
+
+- **Chrome Storage Sync**:
+  - API Key
+  - 選択中のストア名
+  - 最小文字数設定
+  
+- **Chrome Storage Local**:
+  - アップロード履歴（最大10件）
+
+## ⚠️ 注意事項
+
+### 制限事項
+
+- **テキスト長制限**: 最大50,000文字（Gemini APIの制限）
+- **アップロード頻度**: API レート制限に注意
+- **ファイルサイズ**: メタデータ込みで適切なサイズに調整されます
+
+### セキュリティ
+
+- API KeyはChrome Storage Syncに暗号化保存されます
+- すべての通信はHTTPSで行われます
+- コード内にAPI Keyをハードコードしないでください
+
+## 🐛 トラブルシューティング
+
+### エラー: "API Key not set"
+
+**解決方法:**
 1. 設定画面を開く
-2. 「データ管理」セクションで「履歴をエクスポート」をクリック
-3. JSON形式でダウンロードされます
+2. API Keyを入力
+3. 「保存」をクリック
+4. 「API接続テスト」で確認
 
-## トラブルシューティング
+### エラー: "Failed to extract content"
 
-### 「API Key not set」エラー
+**原因:**
+- ページが動的に生成されている
+- ページがJavaScriptで保護されている
+- アクセス権限がない
 
-- 設定画面でAPI Keyが正しく入力されているか確認してください
-- API接続テストを実行して、APIキーが有効か確認してください
+**解決方法:**
+1. ページを完全に読み込んだ後にもう一度試す
+2. 別のページでテストする
 
-### 「Content too short or empty」エラー
+### エラー: "ストアが見つかりませんでした"
 
-- ページの内容が最小文字数（デフォルト100文字）に達していない可能性があります
-- 動的に生成されるコンテンツの場合、ページが完全に読み込まれるまで待ってから実行してください
+**解決方法:**
+1. [Google AI Studio](https://aistudio.google.com/)でFile Search Storeを作成
+2. 設定画面で「ストア一覧を読み込む」を再実行
 
-### 「Failed to extract content」エラー
+### エラー: "Failed to upload document"
 
-- 一部の動的Webページ（SPA等）では抽出に失敗する場合があります
-- ページを再読み込みしてから再度お試しください
+**原因:**
+- APIレート制限に達した
+- ネットワーク接続の問題
+- ストアが削除されている
 
-### アップロードが遅い
+**解決方法:**
+1. 数分待ってから再試行
+2. ネットワーク接続を確認
+3. ストア選択を再設定
 
-- Gemini APIのレート制限に達している可能性があります
-- 少し時間をおいてから再度お試しください
+## 📝 更新履歴
 
-## 技術仕様
+### v1.0.0 (2025-01-15)
+- 初回リリース
+- 基本的なテキスト抽出機能
+- Gemini File Search API連携
+- ストア選択機能
+- アップロード履歴管理
+- API Key管理機能
 
-- **Manifest Version**: 3
-- **対応ブラウザ**: Chrome, Edge, その他Chromium系ブラウザ
-- **使用API**: Gemini File Search API v1beta
-- **ストレージ**:
-  - `chrome.storage.sync`: API Key、設定
-  - `chrome.storage.local`: アップロード履歴
+## 🤝 サポート
 
-## 制限事項
+問題や質問がある場合は、以下のリソースを参照してください：
 
-- 最大アップロード文字数: 約50,000文字（Gemini APIの制限）
-- 履歴保存数: 最大10件
-- 一部の動的コンテンツ（JavaScript生成）は抽出できない場合があります
-- ログインが必要なページは抽出できません
+- [Gemini API Documentation](https://ai.google.dev/docs)
+- [Chrome Extension Developer Guide](https://developer.chrome.com/docs/extensions/)
+- [File Search API Reference](https://ai.google.dev/api/file-search)
 
-## プライバシー
+## 📄 ライセンス
 
-- API Keyは Chrome の安全なストレージに保存され、外部に送信されることはありません
-- アップロードされたコンテンツは Google Gemini のサーバーに送信されます
-- 拡張機能は最小限の権限のみを要求します
-
-## ライセンス
-
-MIT License
-
-## サポート
-
-問題が発生した場合は、以下を確認してください：
-1. Chrome DevTools のコンソールでエラーメッセージを確認
-2. 拡張機能のバージョンが最新か確認
-3. API Keyが有効か確認
-
----
-
-**開発者向けメモ**: デバッグは `chrome://extensions/` で拡張機能の「詳細」→「バックグラウンドページ」や「コンテンツスクリプト」から可能です。
+このプロジェクトはMITライセンスの下で公開されています。

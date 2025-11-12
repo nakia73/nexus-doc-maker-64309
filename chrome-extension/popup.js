@@ -10,6 +10,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // アップロードボタン
   document.getElementById('uploadBtn').addEventListener('click', handleUpload);
 
+  // ストア情報を読み込む
+  await loadStoreInfo();
+
   // 現在のページ情報を取得
   await loadPageContent();
 
@@ -165,4 +168,29 @@ function formatDate(isoString) {
   if (days < 7) return `${days}日前`;
   
   return date.toLocaleDateString('ja-JP');
+}
+
+// ストア情報を読み込んで表示
+async function loadStoreInfo() {
+  const settings = await chrome.storage.sync.get(['selectedStore']);
+  const currentStoreSpan = document.getElementById('currentStore');
+  const storeWarning = document.getElementById('storeWarning');
+  const uploadBtn = document.getElementById('uploadBtn');
+  
+  if (settings.selectedStore) {
+    // ストアが選択されている
+    const storeName = settings.selectedStore.split('/').pop();
+    currentStoreSpan.textContent = storeName;
+    storeWarning.style.display = 'none';
+  } else {
+    // ストアが未選択
+    currentStoreSpan.textContent = '未設定';
+    storeWarning.style.display = 'block';
+    
+    // アップロードボタンを無効化
+    if (uploadBtn) {
+      uploadBtn.disabled = true;
+      uploadBtn.title = 'ストアを設定してください';
+    }
+  }
 }

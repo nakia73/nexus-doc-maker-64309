@@ -31,6 +31,27 @@
         </p>
       </div>
 
+      <div class="setting-section">
+        <h3>📦 File Search Store 設定</h3>
+        
+        <button id="loadStoresBtn" class="secondary-btn">
+          ストア一覧を読み込む
+        </button>
+        
+        <div id="storeSelection" style="display: none;">
+          <label for="storeSelect">アップロード先ストア:</label>
+          <select id="storeSelect" class="store-select">
+            <option value="">-- ストアを選択 --</option>
+          </select>
+          
+          <div class="store-info">
+            <p>選択中のストア: <span id="selectedStoreName">未選択</span></p>
+          </div>
+        </div>
+        
+        <div id="storeLoadError" class="error" style="display: none;"></div>
+      </div>
+
       <button id="saveBtn" class="primary-btn">保存</button>
       <button id="testBtn" class="secondary-btn">API接続テスト</button>
       
