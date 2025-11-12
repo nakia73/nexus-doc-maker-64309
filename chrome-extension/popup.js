@@ -10,6 +10,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // アップロードボタン
   document.getElementById('uploadBtn').addEventListener('click', handleUpload);
 
+  // ストア読み込みボタン
+  document.getElementById('loadStoresBtn').addEventListener('click', loadStores);
+  
+  // ストア選択
+  document.getElementById('storeSelectPopup').addEventListener('change', handleStoreSelection);
+
   // ストア情報を読み込む
   await loadStoreInfo();
 
@@ -30,18 +36,30 @@ async function loadPageContent() {
       return;
     }
 
-    // コンテンツスクリプトにメッセージを送信
-    const response = await chrome.tabs.sendMessage(tab.id, { action: 'extractContent' });
+    // URLチェック（chrome://やedge://などの特殊ページはアクセス不可）
+    if (tab.url.startsWith('chrome://') || tab.url.startsWith('edge://') || tab.url.startsWith('about:')) {
+      showError('この種類のページからはコンテンツを抽出できません');
+      return;
+    }
 
-    if (response.success) {
-      currentPageData = response.data;
-      displayPageInfo(response.data);
-    } else {
-      showError('ページの内容を抽出できませんでした: ' + response.error);
+    try {
+      // コンテンツスクリプトにメッセージを送信
+      const response = await chrome.tabs.sendMessage(tab.id, { action: 'extractContent' });
+
+      if (response && response.success) {
+        currentPageData = response.data;
+        displayPageInfo(response.data);
+      } else {
+        showError('ページの内容を抽出できませんでした: ' + (response?.error || '不明なエラー'));
+      }
+    } catch (messageError) {
+      // content scriptが注入されていない、または応答がない場合
+      console.error('Content script error:', messageError);
+      showError('ページの読み込みが完了していません。数秒待ってから拡張機能アイコンをクリックし直してください。');
     }
   } catch (error) {
     console.error('Error loading page content:', error);
-    showError('ページの内容を取得中にエラーが発生しました');
+    showError('ページの内容を取得中にエラーが発生しました: ' + error.message);
   }
 }
 
@@ -191,6 +209,77 @@ async function loadStoreInfo() {
     if (uploadBtn) {
       uploadBtn.disabled = true;
       uploadBtn.title = 'ストアを設定してください';
+    }
+  }
+}
+
+// ストア一覧を読み込む
+async function loadStores() {
+  const errorDiv = document.getElementById('storeLoadError');
+  const storeSelection = document.getElementById('storeSelection');
+  const storeSelect = document.getElementById('storeSelectPopup');
+  const loadBtn = document.getElementById('loadStoresBtn');
+  
+  errorDiv.style.display = 'none';
+  loadBtn.disabled = true;
+  loadBtn.textContent = '読み込み中...';
+  
+  try {
+    const response = await chrome.runtime.sendMessage({ action: 'listStores' });
+    
+    if (!response.success) {
+      throw new Error(response.error);
+    }
+    
+    const stores = response.stores;
+    
+    if (!stores || stores.length === 0) {
+      throw new Error('ストアが見つかりませんでした。Google AI Studioで作成してください。');
+    }
+    
+    // ドロップダウンをクリア
+    storeSelect.innerHTML = '<option value="">-- ストアを選択 --</option>';
+    
+    // ストアをドロップダウンに追加
+    stores.forEach(store => {
+      const option = document.createElement('option');
+      option.value = store.name;
+      option.textContent = store.displayName || store.name.split('/').pop();
+      storeSelect.appendChild(option);
+    });
+    
+    storeSelection.style.display = 'block';
+    
+    // 保存済みのストアがあれば選択
+    const settings = await chrome.storage.sync.get(['selectedStore']);
+    if (settings.selectedStore) {
+      storeSelect.value = settings.selectedStore;
+    }
+    
+  } catch (error) {
+    errorDiv.textContent = `エラー: ${error.message}`;
+    errorDiv.style.display = 'block';
+  } finally {
+    loadBtn.disabled = false;
+    loadBtn.textContent = 'ストア一覧を読み込む';
+  }
+}
+
+// ストア選択時の処理
+async function handleStoreSelection(e) {
+  const selectedStore = e.target.value;
+  
+  if (selectedStore) {
+    try {
+      await chrome.storage.sync.set({ selectedStore });
+      await loadStoreInfo(); // 表示を更新
+      showStatus('✓ ストアを選択しました', 'success');
+      
+      setTimeout(() => {
+        document.getElementById('status').textContent = '';
+      }, 2000);
+    } catch (error) {
+      showStatus('保存中にエラーが発生しました', 'error');
     }
   }
 }

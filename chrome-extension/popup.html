@@ -15,10 +15,20 @@
 
     <div id="storeInfo" class="section store-info-section">
       <h2>📦 アップロード先</h2>
-      <p>ストア: <span id="currentStore" class="current-store">未設定</span></p>
-      <p class="warning" id="storeWarning" style="display: none;">
-        ⚠️ ストアが設定されていません。設定画面で選択してください。
+      <div class="store-select">
+        <button id="loadStoresBtn" class="secondary-btn">ストア一覧を読み込む</button>
+        <div id="storeSelection" class="form-group" style="display: none; margin-top: 10px;">
+          <label for="storeSelectPopup">アップロード先ストア:</label>
+          <select id="storeSelectPopup" class="form-control">
+            <option value="">-- ストアを選択 --</option>
+          </select>
+        </div>
+      </div>
+      <p style="margin-top: 10px;">現在のストア: <span id="currentStore" class="current-store">未設定</span></p>
+      <p class="warning" id="storeWarning" style="display: none; margin-top: 5px;">
+        ⚠️ ストアが設定されていません
       </p>
+      <p id="storeLoadError" class="error" style="display: none;"></p>
     </div>
 
     <div id="contentSection" class="section">
