@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemini File Search Uploader</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📤 Gemini File Search</h1>
+      <button id="settingsBtn" class="icon-btn" title="設定">⚙️</button>
+    </header>
+
+    <div id="contentSection" class="section">
+      <h2>現在のページ</h2>
+      <div id="pageInfo" class="page-info">
+        <div class="loading">読み込み中...</div>
+      </div>
+      
+      <div id="preview" class="preview" style="display: none;">
+        <h3 id="pageTitle" class="page-title"></h3>
+        <p id="pageUrl" class="page-url"></p>
+        <p class="word-count">
+          文字数: <span id="wordCount">0</span>
+        </p>
+        <div id="contentPreview" class="content-preview"></div>
+      </div>
+
+      <button id="uploadBtn" class="primary-btn" style="display: none;">
+        Upload to Gemini File Search
+      </button>
+      
+      <div id="status" class="status"></div>
+      <div id="progress" class="progress" style="display: none;">
+        <div class="progress-bar"></div>
+      </div>
+    </div>
+
+    <div id="historySection" class="section">
+      <h2>最近のアップロード</h2>
+      <div id="historyList" class="history-list"></div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
